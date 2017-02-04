@@ -8,53 +8,63 @@ class BackupError(Exception):
     pass
 
 
-def set_environ():
-    # pg_dumpall needs this environment variables
-    variables = ['PGHOST', 'PGUSER', 'PGPASSWORD']
-    for var in variables:
-        if not environ.get(var):
-            environ[var] = config(var)
+class Logger(object):
+    def __init__(self):
+        self.log_file = config('LOG_FILE', False)
+
+    def log(self, message):
+        now = datetime.now()
+        line = '{0:%Y-%m-%d %H:%M:%S}: {1}'.format(now, message)
+        if self.log_file:
+            try:
+                with open(self.log_file, 'a') as f:
+                    f.write(line)
+                    f.write('\n')
+            except IOError:
+                self.log_file = False
+        print(line)
 
 
-def format_date(date):
-    return date.strftime("")
+class BackupManager(object):
+    def __init__(self):
+        self.logger = Logger()
+        self.local_destination = config('LOCAL_DESTINATION')
+        self.destination = config('BACKUP_DESTINATION')
+        self.filename = self.get_filename()
 
+    def _set_environ(self):
+        # pg_dumpall needs this environment variables
+        variables = ['PGHOST', 'PGUSER', 'PGPASSWORD']
+        for var in variables:
+            if not environ.get(var):
+                environ[var] = config(var)
 
-def log(mensagem):
-    now = datetime.now()
-    print('{0:%Y-%m-%d %H:%M:%S}: {1}'.format(now, mensagem))
+    def get_filename(self):
+        filename = '{0}.sql'.format(date.today())
+        return path.join(self.local_destination, filename)
 
+    def store_file(self):
+        if path.isfile(self.filename):
+            args = ['aws', 's3', 'cp', self.filename, self.destination]
+            return_code = call(args)
+            if return_code != 0:
+                raise BackupError('aws exit with code %d' % return_code)
+        else:
+            raise BackupError('File %s not found' % self.filename)
 
-def get_filename():
-    local_destination = config('LOCAL_DESTINATION')
-    filename = '{0}.sql'.format(date.today())
-    return path.join(local_destination, filename)
-
-
-def store_file(filename):
-    if path.isfile(filename):
-        destination = config('BACKUP_DESTINATION')
-        args = ['aws', 's3', 'cp', filename, destination]
+    def execute(self):
+        self.logger.log('Iniciando processo')
+        self.logger.log('Gerando backup postgres: %s' % self.filename)
+        args = ['pg_dumpall', '-f', self.filename]
+        self._set_environ()
         return_code = call(args)
         if return_code != 0:
-            raise BackupError('aws exit with code %d' % return_code)
-    else:
-        raise BackupError('File %s not found' % filename)
-
-
-def execute_backup():
-    filename = get_filename()
-    log('Iniciando processo')
-    log('Gerando backup postgres: %s' % filename)
-    args = ['pg_dumpall',  '-f', filename]
-    set_environ()
-    return_code = call(args)
-    if return_code != 0:
-        raise BackupError('pg_dumpall exit with code %d' % return_code)
-    store_file(filename)
-    log('OK')
+            raise BackupError('pg_dumpall exit with code %d' % return_code)
+        self.store_file()
+        self.logger.log('OK')
 
 
 if __name__ == '__main__':
-    execute_backup()
+    backup = BackupManager()
+    backup.execute()
 
