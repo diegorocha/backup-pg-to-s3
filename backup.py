@@ -8,6 +8,14 @@ class BackupError(Exception):
     pass
 
 
+def set_environ():
+    # pg_dumpall needs this environment variables
+    variables = ['PGHOST', 'PGUSER', 'PGPASSWORD']
+    for var in variables:
+        if not os.environ.get(var):
+            os.environ[var] = config(var)
+
+
 def format_date(date):
     return date.strftime("")
 
@@ -36,6 +44,7 @@ def execute_backup():
     log('Iniciando processo')
     log('Gerando backup postgres: %s' % filename)
     args = ['pg_dumpall',  '-f', filename]
+    set_environ()
     return_code = call(args)
     if return_code != 0:
         raise BackupError('pg_dumpall exit with code %d' % return_code)
