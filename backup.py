@@ -1,6 +1,6 @@
-import os
 from decouple import config
 from subprocess import call
+from os import path, environ
 from datetime import datetime, date
 
 
@@ -12,8 +12,8 @@ def set_environ():
     # pg_dumpall needs this environment variables
     variables = ['PGHOST', 'PGUSER', 'PGPASSWORD']
     for var in variables:
-        if not os.environ.get(var):
-            os.environ[var] = config(var)
+        if not environ.get(var):
+            environ[var] = config(var)
 
 
 def format_date(date):
@@ -26,17 +26,20 @@ def log(mensagem):
 
 
 def get_filename():
-    return '{0}.sql'.format(date.today())
+    local_destination = config('LOCAL_DESTINATION')
+    filename = '{0}.sql'.format(date.today())
+    return path.join(local_destination, filename)
 
 
 def store_file(filename):
-    if os.path.isfile(filename):
+    if path.isfile(filename):
         destination = config('BACKUP_DESTINATION')
         args = ['aws', 's3', 'cp', filename, destination]
         return_code = call(args)
         if return_code != 0:
             raise BackupError('aws exit with code %d' % return_code)
-        os.remove(filename)
+    else:
+        raise BackupError('File %s not found' % filename)
 
 
 def execute_backup():
