@@ -5,7 +5,10 @@ from datetime import datetime, date
 
 
 class BackupError(Exception):
-    pass
+    def __init__(self, msg=''):
+        self.msg = msg
+        logger = Logger()
+        logger.exception(self)
 
 
 class Logger(object):
@@ -23,6 +26,10 @@ class Logger(object):
             except IOError:
                 self.log_file = False
         print(line)
+
+    def exception(self, exception):
+        message = '%s: %s' % (exception.__class__.__name__, exception.msg)
+        self.log(message)
 
 
 class BackupManager(object):
