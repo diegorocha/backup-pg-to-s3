@@ -65,6 +65,7 @@ class BackupManager(object):
             return_code = call(args)
             if return_code != 0:
                 raise BackupError('pg_dumpall exit with code %d' % return_code)
+            self.logger.log('Enviando para s3')
             self.store_file()
             self.logger.log('OK')
         except Exception as ex:
