@@ -58,7 +58,6 @@ class BackupManager(object):
                 bucket = bucket_args[1]
                 bucket_args.append(path.split(self.filename)[1])
                 key = '/'.join(bucket_args[2:])
-                print(bucket, key)
                 try:
                     size = fstat(file.fileno()).st_size
                 except Exception:
