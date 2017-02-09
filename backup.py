@@ -5,10 +5,7 @@ from datetime import datetime, date
 
 
 class BackupError(Exception):
-    def __init__(self, msg=''):
-        self.msg = msg
-        logger = Logger()
-        logger.exception(self)
+    pass
 
 
 class Logger(object):
@@ -28,7 +25,7 @@ class Logger(object):
         print(line)
 
     def exception(self, exception):
-        message = '%s: %s' % (exception.__class__.__name__, exception.msg)
+        message = '%s: %s' % (exception.__class__.__name__, str(exception))
         self.log(message)
 
 
@@ -60,15 +57,18 @@ class BackupManager(object):
             raise BackupError('File %s not found' % self.filename)
 
     def execute(self):
-        self.logger.log('Iniciando processo')
-        self.logger.log('Gerando backup postgres: %s' % self.filename)
-        args = ['pg_dumpall', '-f', self.filename]
-        self._set_environ()
-        return_code = call(args)
-        if return_code != 0:
-            raise BackupError('pg_dumpall exit with code %d' % return_code)
-        self.store_file()
-        self.logger.log('OK')
+        try:
+            self.logger.log('Iniciando processo')
+            self.logger.log('Gerando backup postgres: %s' % self.filename)
+            args = ['pg_dumpall', '-f', self.filename]
+            self._set_environ()
+            return_code = call(args)
+            if return_code != 0:
+                raise BackupError('pg_dumpall exit with code %d' % return_code)
+            self.store_file()
+            self.logger.log('OK')
+        except Exception as ex:
+            self.logger.exception(ex)
 
 
 if __name__ == '__main__':
