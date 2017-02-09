@@ -1,7 +1,9 @@
+from boto import connect_s3
 from decouple import config
 from subprocess import call
-from os import path, environ
+from os import path, environ, fstat, SEEK_END
 from datetime import datetime, date
+from boto.s3.key import Key
 
 
 class BackupError(Exception):
@@ -34,7 +36,6 @@ class BackupManager(object):
         self.logger = Logger()
         self.local_destination = config('LOCAL_DESTINATION')
         self.destination = config('BACKUP_DESTINATION')
-        self.filename = self.get_filename()
 
     def _set_environ(self):
         # pg_dumpall needs this environment variables
@@ -48,20 +49,42 @@ class BackupManager(object):
         return path.join(self.local_destination, filename)
 
     def store_file(self):
+        success = False
         if path.isfile(self.filename):
-            args = ['aws', 's3', 'cp', self.filename, self.destination]
-            return_code = call(args)
-            if return_code != 0:
-                raise BackupError('aws exit with code %d' % return_code)
-        else:
-            raise BackupError('File %s not found' % self.filename)
+            with open(self.filename) as file:
+                aws_access_key_id = config('AWS_ACCESS_KEY_ID')
+                aws_secret_access_key = config('AWS_SECRET_ACCESS_KEY')
+                bucket_args = list([p for p in config('BACKUP_DESTINATION').split('/') if p])
+                bucket = bucket_args[1]
+                bucket_args.append(path.split(self.filename)[1])
+                key = '/'.join(bucket_args[2:])
+                print(bucket, key)
+                try:
+                    size = fstat(file.fileno()).st_size
+                except Exception:
+                    # Not all file objects implement fileno(),
+                    # so we fall back on this
+                    file.seek(0, SEEK_END)
+                    size = file.tell()
+                conn = connect_s3(aws_access_key_id, aws_secret_access_key)
+                bucket = conn.get_bucket(bucket, validate=True)
+                k = Key(bucket)
+                k.key = key
+                # if content_type:
+                #     k.set_metadata('Content-Type', content_type)
+                sent = k.set_contents_from_file(file, reduced_redundancy=False, rewind=True)
+                if sent == size:
+                    success = True
+        if not success:
+            raise BackupError('Cannot send %s to s3' % self.filename)
 
     def execute(self):
         try:
+            self.filename = self.get_filename()
             self.logger.log('Iniciando processo')
             self.logger.log('Gerando backup postgres: %s' % self.filename)
-            args = ['pg_dumpall', '-f', self.filename]
             self._set_environ()
+            args = ['pg_dumpall', '-f', self.filename]
             return_code = call(args)
             if return_code != 0:
                 raise BackupError('pg_dumpall exit with code %d' % return_code)
@@ -75,4 +98,3 @@ class BackupManager(object):
 if __name__ == '__main__':
     backup = BackupManager()
     backup.execute()
-
